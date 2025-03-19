@@ -13,6 +13,7 @@ from sqlalchemy import select
 # Initialize Bearer scheme
 bearer_scheme = HTTPBearer()
 
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (
@@ -21,6 +22,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
+
 def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (
@@ -28,6 +30,7 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None):
     )
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
 
 def decode_token(token: str):
     try:
@@ -39,6 +42,7 @@ def decode_token(token: str):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
         )
+
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
@@ -67,10 +71,12 @@ async def get_current_user(
             detail="Could not validate credentials",
         )
 
+
 def get_password_hash(password: str) -> str:
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
     return hashed.decode("utf-8")
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(
