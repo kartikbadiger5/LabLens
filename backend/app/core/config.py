@@ -3,7 +3,7 @@ import ssl
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+asyncpg://lablens-AI_owner:npg_qfcTa8y0buej@ep-wispy-rain-a1wr5vsc-pooler.ap-southeast-1.aws.neon.tech/lablens-AI"
+    DATABASE_URL: str = "postgresql+asyncpg://neondb_owner:npg_C7OwLzYB4nEt@ep-twilight-band-a18wefbi-pooler.ap-southeast-1.aws.neon.tech/neondb"
     SSL_CONTEXT: ssl.SSLContext = ssl.create_default_context()
     SECRET_KEY: str = "your_secret_key"
     ALGORITHM: str = "HS256"

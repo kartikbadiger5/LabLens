@@ -10,3 +10,4 @@ class LabReport(Base):
     filename = Column(String)
     processed_data = Column(String)
     user = relationship("User")
+    diet_plan = relationship("DietPlan", back_populates="report")

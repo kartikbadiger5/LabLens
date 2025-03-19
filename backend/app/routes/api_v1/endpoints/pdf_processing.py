@@ -7,6 +7,7 @@ from app.models.lab_report import LabReport
 from app.models.user import User
 from fastapi import status
 from dotenv import load_dotenv
+from app.models.diet_plan import DietPlan
 import pdfplumber
 import google.generativeai as genai
 from elevenlabs.client import ElevenLabs
@@ -133,6 +134,43 @@ def generate_summary_text(analysis: dict) -> str:
                 summary.extend(items)
 
     return " ".join(summary)
+
+
+def generate_diet_plan(analysis: dict) -> dict:
+    """Generate a personalized diet plan based on lab analysis."""
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    prompt = f"""Based on the following lab report analysis, create a personalized diet plan:
+
+    {json.dumps(analysis, indent=2)}
+
+    **Diet Plan Format (strict JSON, no additional text):**
+    {{
+        "diet_recommendations": [
+            {{
+                "meal": "Breakfast",
+                "foods": ["food1", "food2"],
+                "reason": "Why these foods are recommended"
+            }},
+            {{
+                "meal": "Lunch",
+                "foods": ["food1", "food2"],
+                "reason": "Why these foods are recommended"
+            }}
+        ],
+        "general_nutrition_tips": ["Tip 1", "Tip 2"]
+    }}
+    """
+
+    try:
+        response = model.generate_content(prompt)
+        match = re.search(r"\{.*\}", response.text, re.DOTALL)
+        if not match:
+            return {"error": "Invalid JSON format received from Gemini"}
+        cleaned_json = match.group(0)
+        return json.loads(cleaned_json)
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @router.post("/reports/upload")
@@ -372,3 +410,45 @@ async def get_report(
 #         raise he
 #     except Exception as e:
 #         raise HTTPException(500, f"Audio processing failed: {str(e)}")
+
+
+@router.get("/reports/{report_id}/diet-plan")
+async def get_diet_plan(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate a diet plan based on the lab report and store it in the database."""
+    try:
+        result = await db.execute(select(LabReport).where(LabReport.id == report_id))
+        report = result.scalars().first()
+
+        if not report:
+            raise HTTPException(status_code=404, detail="Report not found")
+
+        if report.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Unauthorized access")
+
+        analysis_data = json.loads(report.processed_data)
+        diet_plan_data = generate_diet_plan(analysis_data)
+
+        if "error" in diet_plan_data:
+            raise HTTPException(status_code=500, detail=diet_plan_data["error"])
+
+        # Store the diet plan in the database
+        diet_plan = DietPlan(
+            user_id=current_user.id,
+            report_id=report_id,
+            diet_data=json.dumps(diet_plan_data),
+        )
+        db.add(diet_plan)
+        await db.commit()
+        await db.refresh(diet_plan)
+
+        return {"report_id": report_id, "diet_plan": diet_plan_data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate and store diet plan: {str(e)}"
+        )
