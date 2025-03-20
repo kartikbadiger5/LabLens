@@ -466,3 +466,70 @@ async def get_diet_plan(
         raise HTTPException(
             status_code=500, detail=f"Failed to generate and store diet plan: {str(e)}"
         )
+
+@router.get("/reports/{report_id}/summary")
+async def get_report_summary(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fetches both the lab report details and diet plan for a given report ID."""
+    try:
+        # Fetch Lab Report
+        result = await db.execute(select(LabReport).where(LabReport.id == report_id))
+        report = result.scalars().first()
+
+        if not report:
+            raise HTTPException(status_code=404, detail="Report not found")
+
+        if report.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Unauthorized access")
+
+        # Parse stored JSON data from lab report
+        try:
+            analysis_data = json.loads(report.processed_data)
+        except json.JSONDecodeError:
+            analysis_data = {"error": "Failed to parse stored analysis data"}
+
+        # Fetch Diet Plan
+        diet_result = await db.execute(
+            select(DietPlan).where(DietPlan.report_id == report_id)
+        )
+        diet_plan = diet_result.scalars().first()
+
+        diet_plan_data = json.loads(diet_plan.diet_data) if diet_plan else {"message": "No diet plan available"}
+
+        # Structure the response
+        return {
+            "website": "LabLens",
+            "report_summary": {
+                "headline": "Lab Report Details",
+                "upload_details": {
+                    "filename": report.filename,
+                    "report_id": report.id,
+                    "message": "Report retrieved successfully",
+                },
+                "analysis": {
+                    "patient_info": analysis_data.get("patient", {}),
+                    "clinical_findings": {
+                        "abnormal_results": analysis_data.get("abnormal_results", []),
+                        "critical_alerts": analysis_data.get("red_flags", []),
+                    },
+                    "recommendations": analysis_data.get("recommendations", {}),
+                    "warnings": [
+                        "This analysis should be verified by a medical professional"
+                    ],
+                },
+            },
+            "diet_summary": {
+                "headline": "Diet Plan Details",
+                "report_id": report_id,
+                "diet_plan": diet_plan_data,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve report summary: {str(e)}"
+        )
