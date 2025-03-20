@@ -202,13 +202,28 @@ async def upload_pdf(
         if "error" in analysis:
             raise HTTPException(status_code=500, detail=analysis["error"])
 
-        # Create LabReport with processed data
-        lab_report = LabReport(
-            user_id=current_user.id,
-            filename=file.filename,
-            processed_data=json.dumps(analysis),
+        # Check if report with same filename already exists for this user.
+        result = await db.execute(
+            select(LabReport).where(
+                LabReport.user_id == current_user.id,
+                LabReport.filename == file.filename
+            )
         )
-        db.add(lab_report)
+        existing_report = result.scalars().first()
+
+        if existing_report:
+            # Override processed_data of the existing report.
+            existing_report.processed_data = json.dumps(analysis)
+            lab_report = existing_report
+        else:
+            # Create new LabReport
+            lab_report = LabReport(
+                user_id=current_user.id,
+                filename=file.filename,
+                processed_data=json.dumps(analysis),
+            )
+            db.add(lab_report)
+
         await db.commit()
         await db.refresh(lab_report)
 
@@ -285,7 +300,6 @@ async def get_history(
                 {
                     "report_id": report.id,
                     "filename": report.filename,
-                    "uploaded_at": report.id,
                 }
                 for report in reports
             ],
