@@ -3,7 +3,7 @@ import ssl
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+asyncpg://lablens_owner:npg_Vmsihzro03Hv@ep-royal-brook-a11085qj-pooler.ap-southeast-1.aws.neon.tech:5432/lablens"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres.wcauhcdohbaekqjqjdbb:Lablens%4025K@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
     # DATABASE_URL: str = "postgresql+asyncpg://postgre:2002@localhost:5432/lablens"
     SSL_CONTEXT: ssl.SSLContext = ssl.create_default_context()
     SECRET_KEY: str = "your_secret_key"
@@ -12,4 +12,5 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # New setting
 
 
-settings = Settings()
+settings=Settings()
+# Lablens@25K

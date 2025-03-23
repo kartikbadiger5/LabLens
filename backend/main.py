@@ -21,7 +21,7 @@ async def create_tables():
         await conn.run_sync(Base.metadata.create_all)
 
 
-
+    
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(
     pdf_processing.router, prefix="/api/v1/reports", tags=["Lab Reports"]

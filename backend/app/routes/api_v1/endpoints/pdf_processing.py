@@ -172,6 +172,44 @@ def generate_diet_plan(analysis: dict) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
+def extract_visualization_data(analysis: dict) -> dict:
+    """
+    Extracts visualization data from abnormal results.
+    It parses numerical values and normal ranges from each abnormal result.
+    """
+    trends = []
+    for result in analysis.get("abnormal_results", []):
+        test_name = result.get("test_name", "Unknown Test")
+        # Ensure the result field is a string
+        result_str = str(result.get("result") or "")
+        # Attempt to extract a numeric value from the result string.
+        numeric_result = None
+        numeric_match = re.findall(r"[-+]?\d*\.\d+|\d+", result_str)
+        if numeric_match:
+            try:
+                numeric_result = float(numeric_match[0])
+            except Exception:
+                numeric_result = None
+
+        # Ensure the normal_range field is a string
+        normal_range_str = str(result.get("normal_range") or "")
+        normal_min, normal_max = None, None
+        range_vals = re.findall(r"[-+]?\d*\.\d+|\d+", normal_range_str)
+        if len(range_vals) >= 2:
+            try:
+                normal_min = float(range_vals[0])
+                normal_max = float(range_vals[1])
+            except Exception:
+                normal_min, normal_max = None, None
+
+        trends.append({
+            "test_name": test_name,
+            "current_value": numeric_result,
+            "normal_min": normal_min,
+            "normal_max": normal_max,
+        })
+    return {"trends": trends}
+
 
 @router.post("/reports/upload")
 async def upload_pdf(
@@ -201,6 +239,9 @@ async def upload_pdf(
         analysis = analyze_with_gemini(text)
         if "error" in analysis:
             raise HTTPException(status_code=500, detail=analysis["error"])
+
+        # Extract visualization data for enhanced frontend visualizations
+        visualization_data = extract_visualization_data(analysis)
 
         # Check if report with same filename already exists for this user.
         result = await db.execute(
@@ -252,7 +293,7 @@ async def upload_pdf(
         except Exception as e:
             audio_response = {"error": f"Audio generation failed: {str(e)}"}
 
-        # Return combined response
+        # Return combined response including visualization_data
         return {
             "upload_details": {
                 "filename": file.filename,
@@ -271,6 +312,7 @@ async def upload_pdf(
                 ],
             },
             "audio_summary": audio_response,
+            "visualization_data": visualization_data
         }
 
     except HTTPException as he:
@@ -362,70 +404,6 @@ async def get_report(
         )
 
 
-# @router.post("/reports/{report_id}/audio")
-# async def generate_audio_summary(
-#     report_id: int,
-#     db: AsyncSession = Depends(get_db),
-#     current_user: User = Depends(get_current_user),
-# ):
-#     """Generate audio summary for a specific report"""
-#     try:
-#         # Get the report
-#         result = await db.execute(select(LabReport).where(LabReport.id == report_id))
-#         report = result.scalars().first()
-
-#         if not report:
-#             raise HTTPException(status_code=404, detail="Report not found")
-#         if report.user_id != current_user.id:
-#             raise HTTPException(status_code=403, detail="Unauthorized access")
-
-#         # Parse analysis data
-#         try:
-#             analysis_data = json.loads(report.processed_data)
-#         except json.JSONDecodeError:
-#             raise HTTPException(400, "Invalid analysis data format")
-
-#         # Generate summary text
-#         summary_text = generate_summary_text(analysis_data)
-#         if not summary_text:
-#             raise HTTPException(400, "No analysable content found")
-
-#         # Generate audio using the client
-#         try:
-#             # Use direct voice ID instead of name
-#             audio = client.generate(
-#                 text=summary_text,
-#                 voice="MF3mGyEYCl7XYWbV9V6O",  # Rachel's voice ID
-#                 model="eleven_monolingual_v1"
-#             )
-
-#             # Get audio bytes directly
-#             audio_data = bytes()
-#             for chunk in audio:
-#                 if chunk:
-#                     audio_data += chunk
-
-#         except Exception as e:
-#             raise HTTPException(500, f"Audio generation failed: {str(e)}")
-
-#         # Convert to base64
-#         audio_base64 = base64.b64encode(audio_data).decode("utf-8")
-
-#         return {
-#             "audio": {
-#                 "content": audio_base64,
-#                 "content_type": "audio/mpeg",
-#                 "text_length": len(summary_text),
-#             },
-#             "report_id": report_id
-#         }
-
-#     except HTTPException as he:
-#         raise he
-#     except Exception as e:
-#         raise HTTPException(500, f"Audio processing failed: {str(e)}")
-
-
 @router.get("/reports/{report_id}/diet-plan")
 async def get_diet_plan(
     report_id: int,
@@ -467,7 +445,8 @@ async def get_diet_plan(
             status_code=500, detail=f"Failed to generate and store diet plan: {str(e)}"
         )
 
-@router.get("/reports/{report_id}/summary")
+
+@router.get("/reports/download-pdf/{report_id}")
 async def get_report_summary(
     report_id: int,
     db: AsyncSession = Depends(get_db),

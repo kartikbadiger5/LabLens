@@ -24,6 +24,12 @@ from app.models.user import User
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
+from app.core import security
+from datetime import datetime, timedelta
+from fastapi import Response, Cookie
+from app.core import security
+from app.models.token import TokenBlocklist
 
 SENDGRID_API_KEY = (
     "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"
@@ -140,7 +146,11 @@ async def register(
 
 
 @router.post("/login")
-async def login(login: LoginSchema, db: AsyncSession = Depends(get_db)):
+async def login(
+    login: LoginSchema,
+    db: AsyncSession = Depends(get_db),
+    response: Response = None,  # Inject response to set cookies
+):
     try:
         result = await db.execute(select(User).where(User.email == login.email))
         user = result.scalars().first()
@@ -153,9 +163,20 @@ async def login(login: LoginSchema, db: AsyncSession = Depends(get_db)):
 
         access_token = create_access_token({"sub": str(user.id)})
         refresh_token = create_refresh_token({"sub": str(user.id)})
+
+        # Set refresh token in HTTP-only cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,  # Use True if using HTTPS
+            samesite="Lax",
+            max_age=security.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # Expiry in seconds
+            path="/",
+        )
+
         return {
             "access_token": access_token,
-            "refresh_token": refresh_token,
             "token_type": "bearer",
         }
     except HTTPException:
@@ -166,59 +187,94 @@ async def login(login: LoginSchema, db: AsyncSession = Depends(get_db)):
             detail=f"Failed to login: {str(e)}",
         )
 
+@router.post("/logout")
+async def logout(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    response: Response = None,
+    refresh_token: Optional[str] = Cookie(None),
+):
+    access_token = None
+    authorization = request.headers.get("Authorization")
+    if authorization and authorization.startswith("Bearer "):
+        access_token = authorization.split(" ")[1]
+
+    try:
+        # Blocklist access token if valid
+        if access_token:
+            try:
+                access_payload = await security.decode_token(access_token, db)
+                access_token = access_payload.get("token")
+                access_exp = datetime.utcfromtimestamp(access_payload.get("exp"))
+                db.add(TokenBlocklist(token=access_token, expires_at=access_exp))
+            except HTTPException:
+                pass  # Token is invalid or expired
+
+        # Blocklist refresh token if valid
+        if refresh_token:
+            try:
+                refresh_payload = await security.decode_token(refresh_token, db)
+                refresh_token = refresh_payload.get("token")
+                refresh_exp = datetime.utcfromtimestamp(refresh_payload.get("exp"))
+                db.add(TokenBlocklist(token=refresh_token, expires_at=refresh_exp))
+            except HTTPException:
+                pass  # Token is invalid or expired
+
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Logout failed: {str(e)}")
+    finally:
+        # Clear refresh token cookie
+        if response:
+            response.delete_cookie(key="refresh_token")
+
+    return {"message": "Successfully logged out"}
 
 @router.post("/refresh")
-async def refresh_token(refresh_token: str, db: AsyncSession = Depends(get_db)):
+async def refresh_token(
+    db: AsyncSession = Depends(get_db),
+    response: Response = None,
+    refresh_token: Optional[str] = Cookie(None),
+):
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token missing")
+
     try:
-        payload = decode_token(refresh_token)
+        # Pass db to decode_token
+        payload = await security.decode_token(refresh_token, db)
         user_id = payload.get("sub")
         if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
+            raise HTTPException(status_code=401, detail="Invalid token")
 
-        result = await db.execute(select(User).where(User.id == int(user_id)))
-        user = result.scalars().first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+        # Blocklist the old refresh token
+        old_token = payload.get("token")
+        old_exp = datetime.utcfromtimestamp(payload.get("exp"))
+        db.add(TokenBlocklist(token=refresh_token, expires_at=old_exp))
 
-        new_access_token = create_access_token({"sub": str(user.id)})
-        new_refresh_token = create_refresh_token({"sub": str(user.id)})
-        return {
-            "access_token": new_access_token,
-            "refresh_token": new_refresh_token,
-            "token_type": "bearer",
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to refresh token: {str(e)}",
+        # Generate new tokens
+        new_access_token = security.create_access_token({"sub": user_id})
+        new_refresh_token = security.create_refresh_token({"sub": user_id})
+
+        # Update the refresh token cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=new_refresh_token,
+            httponly=True,
+            secure=True,
+            samesite="Lax",
+            max_age=security.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            path="/",
         )
 
-
-# @router.post("/logout")
-# async def logout(request: Request, db: AsyncSession = Depends(get_db)):
-#     """
-#     Logout the user by blacklisting the access token.
-#     """
-#     authorization: str = request.headers.get("Authorization")
-#     if not authorization or not authorization.startswith("Bearer "):
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials")
-
-#     access_token = authorization.split(" ")[1]
-#     try:
-#         payload = decode_token(access_token)
-#         expire = datetime.utcnow() + timedelta(days=1)
-#         blocklisted_token = TokenBlocklist(token=access_token, expires_at=expire)
-#         db.add(blocklisted_token)
-#         await db.commit()
-#         return {"message": "Successfully logged out"}
-#     except Exception as e:
-#         await db.rollback()
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=f"Failed to logout: {str(e)}",
-#         )
+        await db.commit()
+        return {"access_token": new_access_token, "token_type": "bearer"}
+    except HTTPException as e:
+        await db.rollback()
+        raise e
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Refresh failed: {str(e)}")
 
 
 @router.get("/users/me")
