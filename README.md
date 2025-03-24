@@ -102,6 +102,8 @@ pass
 - Nutritional recommendations
 - Meal-specific food suggestions
 
+## More Detials about frontend and backend code view this files
+[[frontend.md]] [[backend.md]]
 ## Installation
 
 1. Clone the repository:
@@ -133,7 +135,7 @@ The API is documented using Swagger UI. After starting the server, access it at:
 https://github.com/yourusername/lablens.git
 
 ```
-
+http://127.0.0.1:8000/docs
 ```
 
 ## Security Features
