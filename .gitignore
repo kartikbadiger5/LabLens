@@ -1,0 +1,109 @@
+# General
+.DS_Store
+Thumbs.db
+*.log
+*.sqlite
+*.swp
+*.swo
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.venv
+.envrc
+docker-compose.override.yml
+
+# Backend Python specific
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.egg-info/
+dist/
+build/
+venv/
+env/
+.env/
+.env.example
+
+# Frontend Node.js specific
+node_modules/
+.next/
+out/
+.next-env.d.ts
+.npm
+.yarn/
+.yarn-integrity
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnpm-debug.log
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+junit.xml
+test-results/
+
+# Local development
+docker-data/
+
+# Alembic migrations (if not tracking generated migrations)
+alembic.ini
+
+# Database
+*.db
+*.db-journal
+
+# macOS
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Visual Studio Code
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Local development override files
+docker-compose.override.yml
+
+# Large files
+*.pdf
+*.csv
+*.xlsx
+
+# Security
+*.pem
+*.key
+*.cert
+
+# Storybook
+storybook-static/
+
+# Cypress
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
+
+# Production
+.cache/
