@@ -103,7 +103,10 @@ pass
 - Meal-specific food suggestions
 
 ## More Detials about frontend and backend code view this files
-[[frontend.md]] [[backend.md]]
+
+[Frontend Setup](frontend.md)
+[Backend Setup](backend.md)
+
 ## Installation
 
 1. Clone the repository:
